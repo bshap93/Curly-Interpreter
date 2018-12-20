@@ -143,6 +143,16 @@
                                 class-name
                                 t-classes)]
            [else (type-error obj-expr "object")])]
+        ;; -----------------#2 Change---------------------
+        [(castI class-name exp)
+         (let ([exp-type (recur exp)]
+               [class-type (objT class-name)])
+           (cond
+             [(or (is-subtype? exp-type class-type t-classes)
+                 (is-subtype? class-type exp-type t-classes))
+              class-type]
+             [else
+              (type-error exp "not a subtype or supertype")]))]
         [(sendI obj-expr method-name arg-expr)
          (local [(define obj-type (recur obj-expr))
                  (define arg-type (recur arg-expr))]
@@ -160,27 +170,21 @@
            (typecheck-send (classT-super-name this-class)
                            method-name
                            arg-expr arg-type
-                           t-classes))]
-        [(castI class-name body)
-         (case
-             [(is-subtype? class-name 
+                           t-classes))]))))
 
 (define (typecheck-send [class-name : Symbol]
                         [method-name : Symbol]
                         [arg-expr : ExpI]
                         [arg-type : Type]
                         [t-classes : (Listof (Symbol * ClassT))])
-  (type-case Type arg-type
-    [(thisI) (error 'typecheck "this not allowed in main expression")]
-    [(argI) (error 'typecheck "arg not allowed in main expression")]
-    [else (type-case MethodT (find-method-in-tree
+  (type-case MethodT (find-method-in-tree
                       method-name
                       class-name
                       t-classes)
-            [(methodT arg-type-m result-type body-expr)
-             (if (is-subtype? arg-type arg-type-m t-classes)
-                 result-type
-                 (type-error arg-expr (to-string arg-type-m)))])]))
+    [(methodT arg-type-m result-type body-expr)
+     (if (is-subtype? arg-type arg-type-m t-classes)
+         result-type
+         (type-error arg-expr (to-string arg-type-m)))]))
 
 (define (typecheck-method [method : MethodT]
                           [this-type : Type]
@@ -290,6 +294,14 @@
   (test (typecheck (multI (numI 1) (numI 2))
                    empty)
         (numT))
+
+  ;; -----------------#2 Change---------------------
+  (test (typecheck (castI 'Posn new-posn531) (list posn-t-class posn3D-t-class square-t-class))
+        (objT 'Posn))
+  (test (typecheck (castI 'Posn3D new-posn27) (list posn-t-class posn3D-t-class square-t-class))
+        (objT 'Posn3D))
+  (test/exn (typecheck (castI 'Square (numI 3)) (list posn-t-class posn3D-t-class square-t-class))
+          "subtype")
 
   (test/exn (typecheck-posn (sendI (numI 10) 'mdist (numI 0)))
             "no type")

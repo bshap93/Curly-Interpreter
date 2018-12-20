@@ -17,11 +17,12 @@
         [args : (Listof ExpI)])
   (getI [obj-expr : ExpI]
         [field-name : Symbol])
+  ;; -----------------#2 Change---------------------
+  (castI [class-name : Symbol]
+         [exp : ExpI])
   (sendI [obj-expr : ExpI]
          [method-name : Symbol]
          [arg-expr : ExpI])
-  (castI [class-name : Symbol]
-         [body : ExpI])
   (superI [method-name : Symbol]
           [arg-expr : ExpI]))
 
@@ -48,6 +49,9 @@
        (newE class-name (map recur field-exprs))]
       [(getI expr field-name)
        (getE (recur expr) field-name)]
+      ;; -----------------#2 Change---------------------
+      [(castI class-name exp)
+       (castE class-name (recur exp))]
       [(sendI expr method-name arg-expr)
        (sendE (recur expr)
               method-name

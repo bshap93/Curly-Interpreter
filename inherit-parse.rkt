@@ -49,15 +49,16 @@
    [(s-exp-match? `{get ANY SYMBOL} s)
     (getI (parse (second (s-exp->list s)))
           (s-exp->symbol (third (s-exp->list s))))]
+   ;; -----------------#2 Change---------------------
+   [(s-exp-match? `{cast SYMBOL ANY} s)
+    (castI (s-exp->symbol (second (s-exp->list s)))
+           (parse (third (s-exp->list s))))]
    [(s-exp-match? `{send ANY SYMBOL ANY} s)
     (sendI (parse (second (s-exp->list s)))
            (s-exp->symbol (third (s-exp->list s)))
            (parse (fourth (s-exp->list s))))]
    [(s-exp-match? `{super SYMBOL ANY} s)
     (superI (s-exp->symbol (second (s-exp->list s)))
-            (parse (third (s-exp->list s))))]
-   [(s-exp-match? `{cast SYMBOL ANY} s)
-    (castI (s-exp->symbol (second (s-exp->list s)))
             (parse (third (s-exp->list s))))]
    [else (error 'parse "invalid input")]))
 
@@ -70,6 +71,9 @@
         (thisI))
   (test (parse `{+ 1 2})
         (plusI (numI 1) (numI 2)))
+  ;; -----------------#2 Change---------------------
+  (test (parse `{cast Number 2})
+        (castI 'Number (numI 2)))
   (test (parse `{* 1 2})
         (multI (numI 1) (numI 2)))
   (test (parse `{new Posn 1 2})

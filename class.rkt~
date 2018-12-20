@@ -4,7 +4,7 @@
   (numE [n : Number])
   (plusE [lhs : Exp]
          [rhs : Exp])
-  (multE [lhs : Exp] 
+  (multE [lhs : Exp]
          [rhs : Exp])
   (argE)
   (thisE)
@@ -18,9 +18,7 @@
   (ssendE [obj-expr : Exp]
           [class-name : Symbol]
           [method-name : Symbol]
-          [arg-expr : Exp])
-  (castE [class-name : Symbol]
-         [exp : Exp]))
+          [arg-expr : Exp]))
 
 (define-type Class
   (classC [field-names : (Listof Symbol)]
@@ -95,10 +93,7 @@
          (local [(define obj (recur obj-expr))
                  (define arg-val (recur arg-expr))]
            (call-method class-name method-name classes
-                        obj arg-val))]
-        [(castE class-name body) ....]))))
-
-
+                        obj arg-val))]))))
 
 (define (call-method class-name method-name classes
                      obj arg-val)
@@ -124,7 +119,6 @@
 
 ;; ----------------------------------------
 ;; Examples
-
 
 (module+ test
   (define posn-class
@@ -157,10 +151,41 @@
 
 ;; ----------------------------------------
 
-;; tests for exercise 2
 (module+ test
-  (test (interp (castE 'Posn posn531))
-        (newE 'Posn (list (numE 5) (numE 3))))
-  (test/exn (interp (castE 'Posn3D posn27))
-        "not a subclass"))
+  (test (interp (numE 10) 
+                empty (objV 'Object empty) (numV 0))
+        (numV 10))
+  (test (interp (plusE (numE 10) (numE 17))
+                empty (objV 'Object empty) (numV 0))
+        (numV 27))
+  (test (interp (multE (numE 10) (numE 7))
+                empty (objV 'Object empty) (numV 0))
+        (numV 70))
 
+  (test (interp-posn (newE 'Posn (list (numE 2) (numE 7))))
+        (objV 'Posn (list (numV 2) (numV 7))))
+
+  (test (interp-posn (sendE posn27 'mdist (numE 0)))
+        (numV 9))
+  
+  (test (interp-posn (sendE posn27 'addX (numE 10)))
+        (numV 12))
+
+  (test (interp-posn (sendE (ssendE posn27 'Posn 'factory12 (numE 0))
+                            'multY
+                            (numE 15)))
+        (numV 30))
+
+  (test (interp-posn (sendE posn531 'addDist posn27))
+        (numV 18))
+  
+  (test/exn (interp-posn (plusE (numE 1) posn27))
+            "not a number")
+  (test/exn (interp-posn (getE (numE 1) 'x))
+            "not an object")
+  (test/exn (interp-posn (sendE (numE 1) 'mdist (numE 0)))
+            "not an object")
+  (test/exn (interp-posn (ssendE (numE 1) 'Posn 'mdist (numE 0)))
+            "not an object")
+  (test/exn (interp-posn (newE 'Posn (list (numE 0))))
+            "wrong field count"))

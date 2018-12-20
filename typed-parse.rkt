@@ -1,4 +1,4 @@
-#lang plait﻿
+#lang plait
 (require "class.rkt"
          "inherit.rkt"
          "typed-class.rkt"

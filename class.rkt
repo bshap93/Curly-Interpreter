@@ -4,7 +4,7 @@
   (numE [n : Number])
   (plusE [lhs : Exp]
          [rhs : Exp])
-  (multE [lhs : Exp] 
+  (multE [lhs : Exp]
          [rhs : Exp])
   (argE)
   (thisE)
@@ -12,19 +12,26 @@
         [args : (Listof Exp)])
   (getE [obj-expr : Exp]
         [field-name : Symbol])
+  (castE [class-name : Symbol]
+         [exp : Exp])
   (sendE [obj-expr : Exp]
          [method-name : Symbol]
          [arg-expr : Exp])
   (ssendE [obj-expr : Exp]
           [class-name : Symbol]
           [method-name : Symbol]
-          [arg-expr : Exp])
-  (castE [class-name : Symbol]
-         [exp : Exp]))
+          [arg-expr : Exp]))
 
 (define-type Class
-  (classC [field-names : (Listof Symbol)]
+  (classC [super : Symbol]
+          [field-names : (Listof Symbol)]
           [methods : (Listof (Symbol * Exp))]))
+
+(define (get-field-names [class-name : Symbol]
+                         [classes : (Listof (Symbol * Class))])
+  (let ([theclass (find classes class-name)])
+    (type-case Class theclass
+      [(classC super field-names methods) field-names])))
 
 (define-type Value
   (numV [n : Number])
@@ -77,7 +84,7 @@
          (type-case Value (recur obj-expr)
            [(objV class-name field-vals)
             (type-case Class (find classes class-name)
-              [(classC field-names methods)
+              [(classC super field-names methods)
                (find (map2 (lambda (n v) (values n v))
                            field-names
                            field-vals)
@@ -96,14 +103,44 @@
                  (define arg-val (recur arg-expr))]
            (call-method class-name method-name classes
                         obj arg-val))]
-        [(castE class-name body) (recur body)]))))
+        ;; -----------------#2 Change---------------------
+        [(castE class-name exp)
+         (let ([val (recur exp)])
+           (type-case Value val
+             [(objV class-name2 field-values)
+              (cond
+                [(instance-of? class-name2 class-name classes)
+                 val]
+                [else (error 'interp "not an instance")])]
+             [else (error 'interp "not an object")]))]))))
 
-
-
+;; -----------------#2 Change---------------------
+;(define (fields-of-parent [field-values : (Listof Value)]
+;                          [parent-name : Symbol]
+;                          [child-name : Symbol]
+;                          [classes : (Listof (Symbol * Class))])
+;  (let ([parent-fields (get-field-names parent-name classes)])
+;    (let ([child-fields (get-field-names child-name classes)])
+;      (cond
+;        [(member (first child-fields) parent-fields)
+;         (cons (first field-values) (fields-of-parent (rest field-values) parent-name child-name classes))]
+;        [else (fields-of-parent (rest field-values) parent-name child-name classes)]))))
+                          
+;; -----------------#2 Change---------------------        
+(define (instance-of? [class-name : Symbol]
+                      [parent-name : Symbol]
+                      [classes : (Listof (Symbol * Class))])
+  (cond
+    [(equal? class-name parent-name) #t]
+    [else
+     (type-case Class (find classes class-name)
+       [(classC super field-names methods)
+        (instance-of? super parent-name classes)])]))
+           
 (define (call-method class-name method-name classes
                      obj arg-val)
   (type-case Class (find classes class-name)
-    [(classC field-names methods)
+    [(classC super field-names methods)
      (let ([body-expr (find methods method-name)])
        (interp body-expr
                classes
@@ -125,11 +162,11 @@
 ;; ----------------------------------------
 ;; Examples
 
-
 (module+ test
-  (define posn-class
+  (define posn-class 
     (values 'Posn
-            (classC 
+            (classC
+             'Object
              (list 'x 'y)
              (list (values 'mdist
                            (plusE (getE (thisE) 'x) (getE (thisE) 'y)))
@@ -143,7 +180,8 @@
     
   (define posn3D-class
     (values 'Posn3D
-            (classC 
+            (classC
+             'Posn
              (list 'x 'y 'z)
              (list (values 'mdist (plusE (getE (thisE) 'z)
                                          (ssendE (thisE) 'Posn 'mdist (argE))))
@@ -157,10 +195,53 @@
 
 ;; ----------------------------------------
 
-;; tests for exercise 2
 (module+ test
-  (test (interp (castE 'Posn posn531) empty (numV 0) (numV 0))
-        (objV 'Posn (list (numV 5) (numV 3))))
-  (test/exn (interp (castE 'Posn3D posn27) empty (numV 0) (numV 0))
-        "not a subclass"))
+  (test (interp (numE 10) 
+                empty (objV 'Object empty) (numV 0))
+        (numV 10))
+  ;; -----------------#2 Change---------------------
 
+  (test (interp-posn (castE 'Posn posn531))
+        (objV 'Posn3D (list (numV 5) (numV 3) (numV 1))))
+  (test (interp-posn (castE 'Posn posn27))
+        (objV 'Posn (list (numV 2) (numV 7))))
+  (test/exn (interp-posn (castE 'Posn3D posn27))
+              "not")
+  (test/exn (interp-posn (castE 'Number (numE 3)))
+            "not")
+
+
+  (test (interp (plusE (numE 10) (numE 17))
+                empty (objV 'Object empty) (numV 0))
+        (numV 27))
+  (test (interp (multE (numE 10) (numE 7))
+                empty (objV 'Object empty) (numV 0))
+        (numV 70))
+
+  (test (interp-posn (newE 'Posn (list (numE 2) (numE 7))))
+        (objV 'Posn (list (numV 2) (numV 7))))
+
+  (test (interp-posn (sendE posn27 'mdist (numE 0)))
+        (numV 9))
+  
+  (test (interp-posn (sendE posn27 'addX (numE 10)))
+        (numV 12))
+
+  (test (interp-posn (sendE (ssendE posn27 'Posn 'factory12 (numE 0))
+                            'multY
+                            (numE 15)))
+        (numV 30))
+
+  (test (interp-posn (sendE posn531 'addDist posn27))
+        (numV 18))
+  
+  (test/exn (interp-posn (plusE (numE 1) posn27))
+            "not a number")
+  (test/exn (interp-posn (getE (numE 1) 'x))
+            "not an object")
+  (test/exn (interp-posn (sendE (numE 1) 'mdist (numE 0)))
+            "not an object")
+  (test/exn (interp-posn (ssendE (numE 1) 'Posn 'mdist (numE 0)))
+            "not an object")
+  (test/exn (interp-posn (newE 'Posn (list (numE 0))))
+            "wrong field count"))
