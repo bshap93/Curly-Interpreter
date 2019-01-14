@@ -12,6 +12,7 @@
     [(s-exp-match? `{class SYMBOL extends SYMBOL {ANY ...} ANY ...} s)
      (values (s-exp->symbol (second (s-exp->list s)))
              (classI
+              (s-exp->symbol (second (s-exp->list s)))
               (s-exp->symbol (fourth (s-exp->list s)))
               (map parse-field
                    (s-exp->list (fourth (rest (s-exp->list s)))))
@@ -49,10 +50,13 @@
    [(s-exp-match? `{get ANY SYMBOL} s)
     (getI (parse (second (s-exp->list s)))
           (s-exp->symbol (third (s-exp->list s))))]
-   ;; -----------------#2 Change---------------------
    [(s-exp-match? `{cast SYMBOL ANY} s)
     (castI (s-exp->symbol (second (s-exp->list s)))
            (parse (third (s-exp->list s))))]
+   [(s-exp-match? `{if0 ANY ANY ANY} s)
+    (if0I (parse (second (s-exp->list s)))
+          (parse (third (s-exp->list s)))
+          (parse (fourth (s-exp->list s))))]
    [(s-exp-match? `{send ANY SYMBOL ANY} s)
     (sendI (parse (second (s-exp->list s)))
            (s-exp->symbol (third (s-exp->list s)))
@@ -60,6 +64,19 @@
    [(s-exp-match? `{super SYMBOL ANY} s)
     (superI (s-exp->symbol (second (s-exp->list s)))
             (parse (third (s-exp->list s))))]
+   [(s-exp-match? `{newarray SYMBOL ANY ANY} s)
+    (newarrayI (s-exp->symbol (second (s-exp->list s)))
+               (parse (third (s-exp->list s)))
+               (parse (fourth (s-exp->list s))))]
+   [(s-exp-match? `{arrayref ANY ANY} s)
+    (arrayrefI (parse (second (s-exp->list s)))
+               (parse (third (s-exp->list s))))]
+   [(s-exp-match? `{arrayset ANY ANY ANY} s)
+    (arraysetI (parse (second (s-exp->list s)))
+               (parse (third (s-exp->list s)))
+               (parse (fourth (s-exp->list s))))]
+   [(s-exp-match? `null s)
+    (nullI)]
    [else (error 'parse "invalid input")]))
 
 (module+ test
@@ -71,11 +88,14 @@
         (thisI))
   (test (parse `{+ 1 2})
         (plusI (numI 1) (numI 2)))
-  ;; -----------------#2 Change---------------------
+  (test (parse `{+ null 2})
+        (plusI (nullI) (numI 2)))
   (test (parse `{cast Number 2})
         (castI 'Number (numI 2)))
   (test (parse `{* 1 2})
         (multI (numI 1) (numI 2)))
+  (test (parse `{if0 0 1 2})
+        (if0I (numI 0) (numI 1) (numI 2)))  
   (test (parse `{new Posn 1 2})
         (newI 'Posn (list (numI 1) (numI 2))))
   (test (parse `{get 1 x})
@@ -84,6 +104,17 @@
         (sendI (numI 1) 'm (numI 2)))
   (test (parse `{super m 1})
         (superI 'm (numI 1)))
+
+  (test (parse `null)
+        (nullI))
+
+  (test (parse `{arrayset {newarray NumType 3 1} 0 2})
+        (arraysetI (newarrayI 'NumType (numI 3) (numI 1)) (numI 0) (numI 2)))
+  (test (parse `{newarray NumType 1 2})
+        (newarrayI 'NumType (numI 1) (numI 2)))
+  (test (parse `{arrayref {newarray NumType 1 2} 1})
+        (arrayrefI (newarrayI 'NumType (numI 1) (numI 2)) (numI 1)))
+  
   (test/exn (parse `x)
             "invalid input")
 
@@ -102,7 +133,8 @@
                         [m1 {arg} arg]
                         [m2 {arg} this]})
         (values 'Posn3D
-                (classI 'Posn
+                (classI 'Posn3D
+                        'Posn
                         (list 'x 'y 'z)
                         (list (values 'm1 (argI))
                               (values 'm2 (thisI))))))
@@ -116,7 +148,10 @@
                      (map parse-class classes))])
     (type-case Value v
       [(numV n) (number->s-exp n)]
-      [(objV class-name field-vals) `object])))
+      [(objV class-name field-vals) `object]
+      [(arrayV type-name array-value-list) `array]
+      [(nullV) `null])))
+
 
 (module+ test
   (test (interp-prog
@@ -125,20 +160,21 @@
              {}})
          `{new Empty})
         `object)
+  
+  (test (interp-prog
+         empty
+         `{newarray NumType 1 2})
+        `array)
 
- (test (interp-prog 
-        (list
-         `{class Posn extends Object
-            {x y}
-            [mdist {arg} {+ {get this x} {get this y}}]
-            [addDist {arg} {+ {send arg mdist 0}
-                              {send this mdist 0}}]}
-         
-         `{class Posn3D extends Posn
-            {z}
-            [mdist {arg} {+ {get this z} 
-                            {super mdist arg}}]})
-        
-        `{send {new Posn3D 5 3 1} addDist {new Posn 2 7}})
-       `18))
+  (test (interp-prog
+         empty
+         `1)
+        `1)
+
+  (test (interp-prog
+         (list
+          `{class Empty extends Object
+             {}})
+         `null)
+        `null))
 

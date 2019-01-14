@@ -4,7 +4,8 @@
          "inherit.rkt")
 
 (define-type ClassT
-  (classT [super-name : Symbol]
+  (classT [class-name : Symbol]
+          [super-name : Symbol]
           [fields : (Listof (Symbol * Type))]
           [methods : (Listof (Symbol * MethodT))]))
 
@@ -13,12 +14,11 @@
            [result-type : Type]
            [body-expr : ExpI]))
 
-(define-type Type
-  (numT)
-  (objT [class-name : Symbol]))
 
 (module+ test
   (print-only-errors #t))
+
+
 
 ;; ----------------------------------------
 
@@ -34,7 +34,7 @@
   (if (equal? class-name 'Object)
       empty        
       (type-case ClassT (find t-classes class-name)
-        [(classT super-name fields methods)
+        [(classT cls-name super-name fields methods)
          (append 
           (get-all-field-types super-name t-classes)
           (map snd fields))])))
@@ -62,6 +62,8 @@
 (define find-method-in-tree
   (make-find-in-tree classT-methods))
 
+
+
 ;; ----------------------------------------
 
 (define (is-subclass? name1 name2 t-classes)
@@ -70,8 +72,9 @@
     [(equal? name1 'Object) #f]
     [else
      (type-case ClassT (find t-classes name1)
-       [(classT super-name fields methods)
+       [(classT class-name super-name fields methods)
         (is-subclass? super-name name2 t-classes)])]))
+
 
 (define (is-subtype? t1 t2 t-classes)
   (type-case Type t1
@@ -80,11 +83,16 @@
        [(objT name2)
         (is-subclass? name1 name2 t-classes)]
        [else #f])]
+    [(nullT) (or (objT? t2) (arrayT? t2))]
+    [(arrayT arr-t1)
+     (type-case Type t2
+       [(arrayT arr-t2) (is-subtype? arr-t1 arr-t2 t-classes)]
+       [else #f])]
     [else (equal? t1 t2)]))
 
 (module+ test
-  (define a-t-class (values 'A (classT 'Object empty empty)))
-  (define b-t-class (values 'B (classT 'A empty empty)))
+  (define a-t-class (values 'A (classT 'A 'Object empty empty)))
+  (define b-t-class (values 'B (classT 'B 'A empty empty)))
 
   (test (is-subclass? 'Object 'Object empty)
         #t)
@@ -102,7 +110,19 @@
   (test (is-subtype? (objT 'A) (objT 'B) (list a-t-class b-t-class))
         #f)
   (test (is-subtype? (objT 'B) (objT 'A) (list a-t-class b-t-class))
-        #t))
+        #t)
+
+  (test (is-subtype? (nullT) (objT 'A) (cons a-t-class empty))
+        #t)
+  (test (is-subtype? (nullT) (arrayT (objT 'A)) (cons a-t-class empty))
+        #t)
+  (test (is-subtype? (arrayT (objT 'A)) (objT 'A) (list a-t-class))
+        #f)
+  (test (is-subtype? (arrayT (objT 'A)) (arrayT (objT 'A)) (list a-t-class))
+        #t)
+  (test (is-subtype? (arrayT (objT 'A)) (arrayT (objT 'B)) (list a-t-class b-t-class))
+        #f)
+  )
 
 ;; ----------------------------------------
 
@@ -116,7 +136,13 @@
                  (type-case Type (recur r)
                    [(numT) (numT)]
                    [else (type-error r "num")])]
-                [else (type-error l "num")]))]
+                [else (type-error l "num")]))
+            (define (apply-array array index function)
+              (type-case Type (recur index)
+                [(numT) (type-case Type (recur array)
+                          [(arrayT t1) (function t1)]
+                          [else (type-error array "array")])]
+                [else (type-error index "num")]))]
       (type-case ExpI expr
         [(numI n) (numT)]
         [(plusI l r) (typecheck-nums l r)]
@@ -149,7 +175,7 @@
                [class-type (objT class-name)])
            (cond
              [(or (is-subtype? exp-type class-type t-classes)
-                 (is-subtype? class-type exp-type t-classes))
+                  (is-subtype? class-type exp-type t-classes))
               class-type]
              [else
               (type-error exp "not a subtype or supertype")]))]
@@ -163,6 +189,18 @@
                               t-classes)]
              [else
               (type-error obj-expr "object")]))]
+        [(if0I cnd thn els)
+         (cond
+           [(is-subtype? (recur cnd) (numT) t-classes)
+            (let ([thnType (recur thn)]
+                  [elsType (recur els)])
+              (cond
+                [(is-subtype? elsType thnType t-classes)
+                 thnType]
+                [(is-subtype? thnType elsType t-classes)
+                 elsType]
+                [else (type-error els (to-string thnType))]))]
+           [else (type-error cnd "num")])]
         [(superI method-name arg-expr)
          (local [(define arg-type (recur arg-expr))
                  (define this-class
@@ -170,7 +208,25 @@
            (typecheck-send (classT-super-name this-class)
                            method-name
                            arg-expr arg-type
-                           t-classes))]))))
+                           t-classes))]
+        [(nullI) (nullT)]
+        [(newarrayI type-name size-expr init-expr)
+         (type-case Type (recur size-expr)
+           [(numT) (local [(define type1 (objT type-name))]
+                     (cond
+                       [(is-subtype? (recur init-expr) type1 t-classes) (arrayT type1)]
+                       [else (type-error init-expr "not a subtype")]))]
+           [else (type-error size-expr "not a number")])]
+        [(arrayrefI array-expr index-expr)
+         (apply-array array-expr index-expr
+                      (lambda (t1) t1))]
+        [(arraysetI array-expr index-expr arg-expr)
+         (apply-array array-expr index-expr
+                      (lambda (t1)
+                        (cond
+                          [(is-subtype? (recur arg-expr) t1 t-classes) (numT)]
+                          [else (type-error arg-expr (to-string t1))])))]))))    
+
 
 (define (typecheck-send [class-name : Symbol]
                         [method-name : Symbol]
@@ -225,7 +281,7 @@
                          [t-class : ClassT]
                          [t-classes : (Listof (Symbol * ClassT))])
   (type-case ClassT t-class
-    [(classT super-name fields methods)
+    [(classT cls-name super-name fields methods)
      (map (lambda (m)
             (begin
               (typecheck-method (snd m) (objT class-name) t-classes)
@@ -242,10 +298,15 @@
 
 ;; ----------------------------------------
 
+
+
+
 (module+ test
+
   (define posn-t-class
     (values 'Posn
-            (classT 'Object
+            (classT 'Posn
+                    'Object
                     (list (values 'x (numT)) (values 'y (numT)))
                     (list (values 'mdist
                                   (methodT (numT) (numT) 
@@ -257,7 +318,8 @@
 
   (define posn3D-t-class 
     (values 'Posn3D
-            (classT 'Posn
+            (classT 'Posn3D
+                    'Posn
                     (list (values 'z (numT)))
                     (list (values 'mdist
                                   (methodT (numT) (numT)
@@ -266,7 +328,8 @@
 
   (define square-t-class 
     (values 'Square
-            (classT 'Object
+            (classT 'Square
+                    'Object
                     (list (values 'topleft (objT 'Posn)))
                     (list))))
 
@@ -285,7 +348,15 @@
         (numT))  
   (test (typecheck-posn (sendI new-posn27 'addDist new-posn531))
         (numT))
-
+  (test (typecheck-posn (if0I (numI 0) new-posn27 new-posn531))
+        (objT 'Posn))
+  (test/exn (typecheck-posn (if0I (newI 'Square (list (newI 'Posn (list (numI 0) (numI 1))))) new-posn27 new-posn531))
+            "num")
+  (test (typecheck-posn (if0I (numI 0) new-posn531 new-posn27))
+        (objT 'Posn))
+  (test/exn (typecheck-posn (if0I (numI 0) (numI 3) new-posn27))
+            "numT")
+  
   (test (typecheck-posn (newI 'Square (list (newI 'Posn (list (numI 0) (numI 1))))))
         (objT 'Square))
   (test (typecheck-posn (newI 'Square (list (newI 'Posn3D (list (numI 0) (numI 1) (numI 3))))))
@@ -295,13 +366,12 @@
                    empty)
         (numT))
 
-  ;; -----------------#2 Change---------------------
   (test (typecheck (castI 'Posn new-posn531) (list posn-t-class posn3D-t-class square-t-class))
         (objT 'Posn))
   (test (typecheck (castI 'Posn3D new-posn27) (list posn-t-class posn3D-t-class square-t-class))
         (objT 'Posn3D))
   (test/exn (typecheck (castI 'Square (numI 3)) (list posn-t-class posn3D-t-class square-t-class))
-          "subtype")
+            "subtype")
 
   (test/exn (typecheck-posn (sendI (numI 10) 'mdist (numI 0)))
             "no type")
@@ -322,7 +392,8 @@
   (test/exn (typecheck (numI 10)
                        (list posn-t-class
                              (values 'Other
-                                     (classT 'Posn
+                                     (classT 'Other
+                                             'Posn
                                              (list)
                                              (list (values 'mdist
                                                            (methodT (objT 'Object) (numT)
@@ -333,7 +404,8 @@
   (test/exn (typecheck (numI 0)
                        (list square-t-class
                              (values 'Cube
-                                     (classT 'Square
+                                     (classT 'Cube
+                                             'Square
                                              empty
                                              (list
                                               (values 'm
@@ -347,8 +419,9 @@
 (define strip-types : (ClassT -> ClassI)
   (lambda (t-class)
     (type-case ClassT t-class
-      [(classT super-name fields methods)
+      [(classT cls-name super-name fields methods)
        (classI
+        cls-name
         super-name
         (map fst fields)
         (map (lambda (m)
@@ -369,6 +442,35 @@
   (define (interp-t-posn a)
     (interp-t a
               (list posn-t-class posn3D-t-class)))
+  (test (typecheck-posn (nullI))
+        (nullT))
+
+  (test (typecheck-posn (if0I (numI 3)
+                              (newarrayI 'Posn3D (numI 3) new-posn531)
+                              (newarrayI 'Posn (numI 3) new-posn27)))
+        (arrayT (objT 'Posn)))
+  (test/exn (typecheck-posn (newarrayI 'Posn3D (numI 1) new-posn27))
+            "no type")
+  (test (typecheck-posn (arrayrefI (newarrayI 'Posn (numI 1) new-posn27) (numI 0)))
+        (objT 'Posn))
+
+  (test/exn (typecheck-posn (newarrayI 'Posn new-posn27 new-posn27))
+            "no type")
+
+  (test/exn (typecheck-posn (arraysetI (numI 1) (numI 1) new-posn27))
+            "no type")
+  (test (typecheck-posn (arraysetI (newarrayI 'Posn (numI 1) new-posn27) (numI 1) new-posn27))
+        (numT))
+  (test/exn (typecheck-posn (arraysetI (newarrayI 'Posn3D (numI 1) new-posn531) (numI 1) new-posn27))
+            "no type")
+  (test/exn (typecheck-posn (arraysetI (newarrayI 'Posn3D (numI 1) new-posn531) new-posn27 new-posn531))
+            "no type")
+
+  
+  (test/exn (typecheck-posn (arrayrefI (newarrayI 'Posn (numI 1) new-posn27) (nullI)))
+            "no type")
+  (test/exn (typecheck-posn (arrayrefI (nullI) (nullI)))
+            "no type")
   
   (test (interp-t-posn (sendI new-posn27 'mdist (numI 0)))
         (numV 9))  

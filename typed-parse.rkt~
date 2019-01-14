@@ -14,8 +14,7 @@
     [(s-exp-match? `{class SYMBOL extends SYMBOL {ANY ...} ANY ...} s)
      (values
       (s-exp->symbol (second (s-exp->list s)))
-      (classT (s-exp->symbol (second (s-exp->list s)))
-              (s-exp->symbol (fourth (s-exp->list s)))
+      (classT (s-exp->symbol (fourth (s-exp->list s)))
               (map parse-t-field
                    (s-exp->list (fourth (rest (s-exp->list s)))))
               (map parse-t-method 
@@ -76,8 +75,7 @@
                           [m1 {[arg : num]} : num arg]
                           [m2 ([arg : num]) : Object this]})
         (values 'Posn3D
-                (classT 'Posn3D
-                        'Posn
+                (classT 'Posn
                         (list (values 'x (numT))
                               (values 'y (numT)))
                         (list (values 'm1 (methodT (numT) (numT) (argI)))
@@ -103,14 +101,7 @@
              {}})
          `null)
         `null)
-  
-  (test (interp-t-prog
-         (list
-          `{array Empty extends Object
-             {}})
-         `null)
-        `null)
-  
+
   (test (interp-t-prog
          (list
           `{class Empty extends Object

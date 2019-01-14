@@ -17,17 +17,29 @@
         [args : (Listof ExpI)])
   (getI [obj-expr : ExpI]
         [field-name : Symbol])
-  ;; -----------------#2 Change---------------------
   (castI [class-name : Symbol]
          [exp : ExpI])
+  (if0I [cnd : ExpI]
+        [thn : ExpI]
+        [els : ExpI])
   (sendI [obj-expr : ExpI]
          [method-name : Symbol]
          [arg-expr : ExpI])
   (superI [method-name : Symbol]
-          [arg-expr : ExpI]))
+          [arg-expr : ExpI])
+  (nullI)
+  (newarrayI (type-name : Symbol)
+             (size-expr : ExpI)
+             (init-expr : ExpI))
+  (arrayrefI (array-expr : ExpI)
+             (index-expr : ExpI))
+  (arraysetI (array-expr : ExpI)
+             (index-expr : ExpI)
+             (set-expr : ExpI)))
 
 (define-type ClassI
-  (classI [super-name : Symbol]
+  (classI [class-name : Symbol]
+          [super-name : Symbol]
           [field-names : (Listof Symbol)]
           [methods : (Listof (Symbol * ExpI))]))
 
@@ -52,6 +64,9 @@
       ;; -----------------#2 Change---------------------
       [(castI class-name exp)
        (castE class-name (recur exp))]
+      [(if0I cnd thn els)
+       (if0E (recur cnd) (recur thn) (recur els))]
+      [(nullI) (nullE)]
       [(sendI expr method-name arg-expr)
        (sendE (recur expr)
               method-name
@@ -60,11 +75,30 @@
        (ssendE (thisE)
                super-name
                method-name
-               (recur arg-expr))])))
+               (recur arg-expr))]
+      [(newarrayI type-name size-expr initial-expr)
+       (newarrayE type-name
+                  (recur size-expr)
+                  (recur initial-expr))]
+      [(arrayrefI array-expr index-expr)
+       (arrayrefE (recur array-expr)
+                  (recur index-expr))]
+      [(arraysetI array-expr index-expr set-expr)
+       (arraysetE (recur array-expr)
+                  (recur index-expr)
+                  (recur set-expr))])))
 
 (module+ test
+  (test (exp-i->c (newarrayI 'Array (numI 0) (numI 1)) 'Object)
+        (newarrayE 'Array (numE 0) (numE 1)))
+  (test (exp-i->c (arrayrefI (numI 0) (numI 1)) 'Object)
+        (arrayrefE (numE 0) (numE 1)))
+  (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
+        (arraysetE (numE 0) (numE 1) (numE 2)))
   (test (exp-i->c (numI 10) 'Object)
         (numE 10))
+  (test (exp-i->c (if0I (numI 0) (numI 1) (numI 2)) 'Object)
+        (if0E (numE 0) (numE 1) (numE 2)))
   (test (exp-i->c (plusI (numI 10) (numI 2)) 'Object)
         (plusE (numE 10) (numE 2)))
   (test (exp-i->c (multI (numI 10) (numI 2)) 'Object)
@@ -86,8 +120,10 @@
 
 (define (class-i->c-not-flat [c : ClassI]) : Class
   (type-case ClassI c
-    [(classI super-name field-names methods)
+    [(classI class-name super-name field-names methods)
      (classC
+      class-name
+      super-name
       field-names
       (map (lambda (m)
              (values (fst m)
@@ -107,12 +143,15 @@
   (define posn3d-i-class 
     (values 'Posn3D
             (classI
+             'Posn3D
              'Posn
              (list 'z)
              (list posn3d-mdist-i-method))))
   (define posn3d-c-class-not-flat
     (values 'Posn3D
-            (classC (list 'z)
+            (classC 'Posn3D
+                    'Posn
+                    (list 'z)
                     (list posn3d-mdist-c-method))))
 
   (test (class-i->c-not-flat (snd posn3d-i-class))
@@ -124,10 +163,12 @@
                        [classes-not-flat : (Listof (Symbol * Class))] 
                        [i-classes : (Listof (Symbol * ClassI))]) : Class
   (type-case Class (find classes-not-flat name)
-    [(classC field-names methods)
+    [(classC cls-name1 super1 field-names methods)
      (type-case Class (flatten-super name classes-not-flat i-classes)
-       [(classC super-field-names super-methods)
+       [(classC cls-name2 super2 super-field-names super-methods)
         (classC
+         cls-name1
+         super1
          (add-fields super-field-names field-names)
          (add/replace-methods super-methods methods))])]))
 
@@ -135,9 +176,9 @@
                        [classes-not-flat : (Listof (Symbol * Class))] 
                        [i-classes : (Listof (Symbol * ClassI))]) : Class
   (type-case ClassI (find i-classes name)
-    [(classI super-name field-names i-methods)
+    [(classI cls-name super-name field-names i-methods)
      (if (equal? super-name 'Object)
-         (classC empty empty)
+         (classC cls-name super-name empty empty)
          (flatten-class super-name
                         classes-not-flat
                         i-classes))]))
@@ -146,7 +187,8 @@
   (define posn-i-class
     (values
      'Posn
-     (classI 'Object
+     (classI 'Posn
+             'Object
              (list 'x 'y)
              (list (values 'mdist
                            (plusI (getI (thisI) 'x)
@@ -161,14 +203,18 @@
   (define posn-c-class-not-flat
     (values
      'Posn
-    (classC (list 'x 'y)
+     (classC 'Posn
+             'Object
+            (list 'x 'y)
             (list (values 'mdist
                           (plusE (getE (thisE) 'x)
                                  (getE (thisE) 'y)))
                   addDist-c-method))))
   (define posn3d-c-class
     (values 'Posn3D
-            (classC (list 'x 'y 'z)
+            (classC 'Posn3D
+                    'Posn
+                    (list 'x 'y 'z)
                     (list posn3d-mdist-c-method
                           addDist-c-method))))
 
@@ -206,6 +252,10 @@
                                    new-method)))]))
 
 (module+ test
+  (test (exp-i->c (nullI) 'Posn)
+        (nullE))
+  (test (exp-i->c (castI 'Object (numI 0)) 'Object)
+        (castE 'Object (numE 0)))
   (test (add-fields (list 'x 'y) (list 'z))
         (list 'x 'y 'z))
 
@@ -235,7 +285,14 @@
   (test (add/replace-method (list (values 'm (numE 0)))
                             (values 'n (numE 2)))
         (list (values 'm (numE 0))
-              (values 'n (numE 2)))))
+              (values 'n (numE 2))))
+  
+  (test (exp-i->c (newarrayI 'Posn (numI 0) (numI 1)) 'Object)
+        (newarrayE 'Posn (numE 0) (numE 1)))
+  (test (exp-i->c (arrayrefI (numI 0) (numI 1)) 'Object)
+        (arrayrefE (numE 0) (numE 1)))
+  (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
+        (arraysetE (numE 0) (numE 1) (numE 2))))
 
 ;; ----------------------------------------
 

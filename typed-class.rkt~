@@ -13,9 +13,6 @@
            [result-type : Type]
            [body-expr : ExpI]))
 
-(define-type Type
-  (numT)
-  (objT [class-name : Symbol]))
 
 (module+ test
   (print-only-errors #t))
@@ -75,10 +72,15 @@
 
 (define (is-subtype? t1 t2 t-classes)
   (type-case Type t1
+    [(nullT) (objT? t2)]
     [(objT name1)
      (type-case Type t2 
        [(objT name2)
         (is-subclass? name1 name2 t-classes)]
+       [else #f])]
+    [(arrayT type1)
+     (type-case Type t2
+       [(arrayT type2) (is-subtype? type1 type2 t-classes)]
        [else #f])]
     [else (equal? t1 t2)]))
 
@@ -102,7 +104,11 @@
   (test (is-subtype? (objT 'A) (objT 'B) (list a-t-class b-t-class))
         #f)
   (test (is-subtype? (objT 'B) (objT 'A) (list a-t-class b-t-class))
-        #t))
+        #t)
+
+  (test (is-subtype? (nullT) (objT 'A) (cons a-t-class empty))
+        #t)
+  )
 
 ;; ----------------------------------------
 
@@ -116,7 +122,13 @@
                  (type-case Type (recur r)
                    [(numT) (numT)]
                    [else (type-error r "num")])]
-                [else (type-error l "num")]))]
+                [else (type-error l "num")]))
+            (define (array-op array index func)
+              (type-case Type (recur index)
+                [(numT) (type-case Type (recur array)
+                           [(arrayT type1) (func type1)]
+                           [else (type-error array "array")])]
+                [else (type-error index "num")]))]
       (type-case ExpI expr
         [(numI n) (numT)]
         [(plusI l r) (typecheck-nums l r)]
@@ -143,6 +155,16 @@
                                 class-name
                                 t-classes)]
            [else (type-error obj-expr "object")])]
+        ;; -----------------#2 Change---------------------
+        [(castI class-name exp)
+         (let ([exp-type (recur exp)]
+               [class-type (objT class-name)])
+           (cond
+             [(or (is-subtype? exp-type class-type t-classes)
+                 (is-subtype? class-type exp-type t-classes))
+              class-type]
+             [else
+              (type-error exp "not a subtype or supertype")]))]
         [(sendI obj-expr method-name arg-expr)
          (local [(define obj-type (recur obj-expr))
                  (define arg-type (recur arg-expr))]
@@ -153,6 +175,18 @@
                               t-classes)]
              [else
               (type-error obj-expr "object")]))]
+        [(if0I cnd thn els)
+         (cond
+           [(is-subtype? (recur cnd) (numT) t-classes)
+            (let ([thnType (recur thn)]
+                  [elsType (recur els)])
+              (cond
+                [(is-subtype? elsType thnType t-classes)
+                 thnType]
+                [(is-subtype? thnType elsType t-classes)
+                 elsType]
+                [else (type-error els (to-string thnType))]))]
+           [else (type-error cnd "num")])]
         [(superI method-name arg-expr)
          (local [(define arg-type (recur arg-expr))
                  (define this-class
@@ -160,7 +194,23 @@
            (typecheck-send (classT-super-name this-class)
                            method-name
                            arg-expr arg-type
-                           t-classes))]))))
+                           t-classes))]
+        [(nullI) (nullT)]
+        [(newarrayI type-name size init-expr)
+                   (type-case Type (recur size)
+                     [(numT) (local [(define type1 (objT type-name))]
+                                (if (is-subtype? (recur init-expr) type1 t-classes)
+                                    (arrayT type1)
+                                    (type-error init-expr (to-string type1))))]
+                     [else (type-error size "num")])]
+        [(arrayrefI array index)
+                   (array-op array index
+                             (lambda (type1) type1))]
+        [(arraysetI array index arg-expr)
+                   (array-op array index
+                             (lambda (type1) (if (is-subtype? (recur arg-expr) type1 t-classes)
+                                                   (numT)
+                                                   (type-error arg-expr (to-string type1)))))]))))
 
 (define (typecheck-send [class-name : Symbol]
                         [method-name : Symbol]
@@ -232,7 +282,11 @@
 
 ;; ----------------------------------------
 
+
+
+
 (module+ test
+
   (define posn-t-class
     (values 'Posn
             (classT 'Object
@@ -275,7 +329,16 @@
         (numT))  
   (test (typecheck-posn (sendI new-posn27 'addDist new-posn531))
         (numT))
-
+  ;; -----------------#3 Change---------------------
+  (test (typecheck-posn (if0I (numI 0) new-posn27 new-posn531))
+        (objT 'Posn))
+  (test/exn (typecheck-posn (if0I (newI 'Square (list (newI 'Posn (list (numI 0) (numI 1))))) new-posn27 new-posn531))
+        "num")
+  (test (typecheck-posn (if0I (numI 0) new-posn531 new-posn27))
+        (objT 'Posn))
+  (test/exn (typecheck-posn (if0I (numI 0) (numI 3) new-posn27))
+        "numT")
+  
   (test (typecheck-posn (newI 'Square (list (newI 'Posn (list (numI 0) (numI 1))))))
         (objT 'Square))
   (test (typecheck-posn (newI 'Square (list (newI 'Posn3D (list (numI 0) (numI 1) (numI 3))))))
@@ -284,6 +347,14 @@
   (test (typecheck (multI (numI 1) (numI 2))
                    empty)
         (numT))
+
+  ;; -----------------#2 Change---------------------
+  (test (typecheck (castI 'Posn new-posn531) (list posn-t-class posn3D-t-class square-t-class))
+        (objT 'Posn))
+  (test (typecheck (castI 'Posn3D new-posn27) (list posn-t-class posn3D-t-class square-t-class))
+        (objT 'Posn3D))
+  (test/exn (typecheck (castI 'Square (numI 3)) (list posn-t-class posn3D-t-class square-t-class))
+          "subtype")
 
   (test/exn (typecheck-posn (sendI (numI 10) 'mdist (numI 0)))
             "no type")

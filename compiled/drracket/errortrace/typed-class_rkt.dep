@@ -1,0 +1,1 @@
+("7.0" ("cc0e66c20dc622d14887f624a48a717b389576fa" . "6ec4cba58649f494f7e367d7d41ee8205d2fabb2") #"/Users/benjaminshapiro/ToSortDesktopItems/HW13/class.rkt" #"/Users/benjaminshapiro/ToSortDesktopItems/HW13/inherit.rkt" (collects #"plait" #"main.rkt") (collects #"racket" #"base.rkt") (collects #"racket" #"runtime-config.rkt") (collects #"racket" #"runtime-path.rkt"))
