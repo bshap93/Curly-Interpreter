@@ -60,6 +60,7 @@
   (print-only-errors #t))
 
 ;; ----------------------------------------
+
 (define (find [l : (Listof (Symbol * 'a))] [name : Symbol]) : 'a
   (type-case (Listof (Symbol * 'a)) l
     [empty
@@ -69,9 +70,6 @@
          (snd p)
          (find rst-l name))]))
 
-
-(define (find-class [l : (Listof (Symbol * 'a))] [name : Symbol])
-  (find l name))
 
 
 (module+ test
@@ -89,7 +87,8 @@
 
 (define interp : (Exp (Listof (Symbol * Class)) Value Value -> Value)
   (lambda (a classes this-val arg-val)
-    (local [(define (apply-array array-expr index-expr function)
+    (local [
+            (define (apply-array array-expr index-expr function)
               (type-case Value (recur index-expr)
                 [(numV num) (cond
                               [(< num 0) (error 'interp "index can't be negative")]
@@ -99,9 +98,10 @@
                                    [(arrayV type-name value-list) (function type-name value-list num)]
                                    [else (error 'interp "must be array")]))])]
                 [else (error 'interp "not a number")]))
-                
+            
             (define (recur expr)
               (interp expr classes this-val arg-val))]
+      
       (type-case Exp a
         [(numE n) (numV n)]
         [(plusE l r) (num+ (recur l) (recur r))]
@@ -109,7 +109,7 @@
         [(thisE) this-val]
         [(argE) arg-val]
         [(newE class-name field-exprs)
-         (local [(define c (find-class classes class-name))
+         (local [(define c (find classes class-name))
                  (define vals (map recur field-exprs))]
            (if (= (length vals) (length (classC-field-names c)))
                (objV class-name vals)
@@ -160,7 +160,7 @@
          (type-case Value (recur size-expr)
            [(numV num) (cond
                          [(< num 0) (error 'interp "size can't be negative")]
-                         [else (arrayV type-name (initial-array num (recur initial-expr)))])]
+                         [else (arrayV type-name (make-array num (recur initial-expr)))])]
            [else (error 'interp "not a number")])]
         [(arrayrefE array-expr index-expr)
          (apply-array array-expr index-expr
@@ -192,23 +192,11 @@
 (define (set-array values index set-val)
   (search-array values index (lambda (b) (set-box! b set-val))))
 
-(define (initial-array size initial-value)
+(define (make-array size value)
   (cond
     [(equal? size 0) empty]
-    [else (cons (box initial-value) (initial-array (- size 1) initial-value))]))
-
-(define (find* [get-name : ('a -> Symbol)])
-  (lambda ([name : Symbol] [val-list : (Listof 'a)])
-    (cond
-      [(empty? val-list)
-       (error 'find "not found")]
-      [else (if (equal? name (get-name (first val-list)))
-                (first val-list)
-                ((find* get-name) name (rest val-list)))])))
-
-
-                          
-;; -----------------#2 Change---------------------        
+    [else (cons (box value) (make-array (- size 1) value))]))
+                             
 (define (instance-of? [class-name : Symbol]
                       [parent-name : Symbol]
                       [classes : (Listof (Symbol * Class))])
@@ -221,7 +209,7 @@
            
 (define (call-method class-name method-name classes
                      obj arg-val)
-  (type-case Class (find-class classes class-name)
+  (type-case Class (find classes class-name)
     [(classC cls-name super field-names methods)
      (let ([body-expr (find methods method-name)])
        (interp body-expr
@@ -322,6 +310,8 @@
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 2) posn27) (numE -1)))
         "negative")
   ; Need here to show is imperative
+      
+  
   (test (interp-posn (arraysetE (newarrayE 'Posn (numE 2) posn27) (numE 0) posn828))
         (numV 0))
   (test/exn (interp-posn (arraysetE posn27 (numE 0) posn828))
@@ -340,8 +330,6 @@
         (nullV))
   (test/exn (interp-posn (getE (nullE) 'x))
             "not an object")
-;  (test/exn (interp-posn (arraysetE (newarrayE 'Posn3D (numE 2) posn42432) (numE 3) posn27))
-;            "not an instance")
 
   (test (interp (if0E (numE 0) posn828 posn27)
                 (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
@@ -350,8 +338,8 @@
                 (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
         (interp-posn posn27))
   (test/exn (interp (if0E posn828 posn828 posn27)
-                 (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
-         "not a number")
+                    (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+            "not a number")
         
 
   (test (interp-posn (castE 'Posn posn531))
