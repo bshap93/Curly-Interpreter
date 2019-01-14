@@ -310,6 +310,14 @@
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 2) posn27) (numE -1)))
         "negative")
   ; Need here to show is imperative
+    
+  (test
+   (let ([my-new-array (newarrayE 'Posn (numE 2) posn27)])
+     (begin
+       (interp-posn (arraysetE my-new-array (numE 0) posn828))
+       (interp-posn (arrayrefE my-new-array (numE 1)))))
+   (interp-posn posn828))
+      
       
   
   (test (interp-posn (arraysetE (newarrayE 'Posn (numE 2) posn27) (numE 0) posn828))
