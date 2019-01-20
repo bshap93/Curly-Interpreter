@@ -54,6 +54,7 @@
     [else (error 'parse-type "invalid input")]))
 
 (module+ test
+  ;cast
   (test (parse-type `num)
         (numT))
   (test (parse-type `Object)
@@ -96,6 +97,9 @@
       [(arrayV type-name values) `array]
       [(nullV) `null])))
 
+
+
+
 (module+ test
   (test (interp-t-prog
          (list
@@ -104,12 +108,13 @@
          `null)
         `null)
   
-  (test (interp-t-prog
-         (list
-          `{array Empty extends Object
-             {}})
-         `null)
+  (test (interp-t-prog empty `null)
         `null)
+
+  (test (interp-t-prog
+         empty
+         `{newarray Object 5 {new Object}})
+        `array)
   
   (test (interp-t-prog
          (list

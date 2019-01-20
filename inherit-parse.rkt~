@@ -12,6 +12,7 @@
     [(s-exp-match? `{class SYMBOL extends SYMBOL {ANY ...} ANY ...} s)
      (values (s-exp->symbol (second (s-exp->list s)))
              (classI
+              (s-exp->symbol (second (s-exp->list s)))
               (s-exp->symbol (fourth (s-exp->list s)))
               (map parse-field
                    (s-exp->list (fourth (rest (s-exp->list s)))))
@@ -49,11 +50,9 @@
    [(s-exp-match? `{get ANY SYMBOL} s)
     (getI (parse (second (s-exp->list s)))
           (s-exp->symbol (third (s-exp->list s))))]
-   ;; -----------------#2 Change---------------------
    [(s-exp-match? `{cast SYMBOL ANY} s)
     (castI (s-exp->symbol (second (s-exp->list s)))
            (parse (third (s-exp->list s))))]
-   ;; -----------------#3 Change---------------------
    [(s-exp-match? `{if0 ANY ANY ANY} s)
     (if0I (parse (second (s-exp->list s)))
           (parse (third (s-exp->list s)))
@@ -91,12 +90,10 @@
         (plusI (numI 1) (numI 2)))
   (test (parse `{+ null 2})
         (plusI (nullI) (numI 2)))
-  ;; -----------------#2 Change---------------------
   (test (parse `{cast Number 2})
         (castI 'Number (numI 2)))
   (test (parse `{* 1 2})
         (multI (numI 1) (numI 2)))
-  ;; -----------------#3 Change---------------------
   (test (parse `{if0 0 1 2})
         (if0I (numI 0) (numI 1) (numI 2)))  
   (test (parse `{new Posn 1 2})
@@ -110,6 +107,14 @@
 
   (test (parse `null)
         (nullI))
+
+  (test (parse `{arrayset {newarray NumType 3 1} 0 2})
+        (arraysetI (newarrayI 'NumType (numI 3) (numI 1)) (numI 0) (numI 2)))
+  (test (parse `{newarray NumType 1 2})
+        (newarrayI 'NumType (numI 1) (numI 2)))
+  (test (parse `{arrayref {newarray NumType 1 2} 1})
+        (arrayrefI (newarrayI 'NumType (numI 1) (numI 2)) (numI 1)))
+  
   (test/exn (parse `x)
             "invalid input")
 
@@ -128,7 +133,8 @@
                         [m1 {arg} arg]
                         [m2 {arg} this]})
         (values 'Posn3D
-                (classI 'Posn
+                (classI 'Posn3D
+                        'Posn
                         (list 'x 'y 'z)
                         (list (values 'm1 (argI))
                               (values 'm2 (thisI))))))
@@ -154,6 +160,16 @@
              {}})
          `{new Empty})
         `object)
+  
+  (test (interp-prog
+         empty
+         `{newarray NumType 1 2})
+        `array)
+
+  (test (interp-prog
+         empty
+         `1)
+        `1)
 
   (test (interp-prog
          (list

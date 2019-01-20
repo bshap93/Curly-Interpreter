@@ -12,6 +12,9 @@
         [args : (Listof Exp)])
   (getE [obj-expr : Exp]
         [field-name : Symbol])
+  (setE [obj-expr : Exp]
+        [field-name : Symbol]
+        [arg-expr : Exp])
   (castE [class-name : Symbol]
          [exp : Exp])
   (if0E [cnd : Exp]
@@ -32,7 +35,18 @@
   (arraysetE [array : Exp]
              [index : Exp]
              [arg : Exp])
+  (beginE [l : Exp]
+          [r : Exp])
   (nullE))
+
+(define-type Binding
+  (bind [name : Symbol]
+        [val : Value]))
+
+(define-type-alias Env (Listof Binding))
+
+(define mt-env empty)
+(define extend-env cons)
 
 (define-type Class
   (classC [class-name : Symbol]
@@ -109,7 +123,9 @@
         [(thisE) this-val]
         [(argE) arg-val]
         [(newE class-name field-exprs)
-         (local [(define c (find classes class-name))
+         (local [(define c (if (symbol=? class-name 'Object) 
+                               (classC 'Object 'Object empty empty)
+                               (find classes class-name)))
                  (define vals (map recur field-exprs))]
            (if (= (length vals) (length (classC-field-names c)))
                (objV class-name vals)
@@ -124,6 +140,14 @@
                            field-vals)
                      field-name)])]
            [else (error 'interp "not an object")])]
+        [(setE obj-expr field-name arg-expr)
+         (type-case Value (recur obj-expr)
+           [(objV class-name field-values)
+            (let ([f (interp arg-expr env)])
+              (begin
+                (set-box! (find field-name class-name field-values) f)
+                f))]
+           [else (error 'interp "not a record")])]
         [(sendE obj-expr method-name arg-expr)
          (local [(define obj (recur obj-expr))
                  (define arg-val (recur arg-expr))]
@@ -285,13 +309,52 @@
   (define (interp-posn a)
     (interp a (list posn-class posn3D-class) (numV -1) (numV -1))))
 
+  (define snowball-class
+    (values 'Snowball
+            (classC 'Snowball
+                    'Object ; Part 3
+                    (list 'size)
+                    (list (values 'zero (thisE))
+                          (values 'nonzero (newE 'Snowball 
+                                                 (list (plusE (numE 1) (getE (thisE) 'size)))))))))
+
 ;; ----------------------------------------
 
 (module+ test
 
-  
+  ; cast
+  (test (interp-posn (castE 'Posn posn531))
+        (objV 'Posn3D (list (numV 5) (numV 3) (numV 1))))
+  (test (interp-posn (castE 'Posn posn27))
+        (objV 'Posn (list (numV 2) (numV 7))))
+  (test/exn (interp-posn (castE 'Posn3D posn27))
+            "not")
+  (test/exn (interp-posn (castE 'Number (numE 1)))
+            "not an object")
+  (test (interp-posn (castE 'Posn (nullE)))
+        (nullV))
+
+  ; if0
+  (test (interp (if0E (numE 0) posn828 posn27)
+                (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+        (interp-posn posn828))
+  (test (interp (if0E (numE 1) posn828 posn27)
+                (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+        (interp-posn posn27))
+  (test/exn (interp (if0E posn828 posn828 posn27)
+                    (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+            "not a number")
   (test/exn (interp-posn (newarrayE 'Posn posn27 (numE 9)))
             "not a number")
+
+  ; null
+  (test (interp (nullE) 
+                empty (objV 'Object empty) (numV 0))
+        (nullV))
+  (test/exn (interp-posn (getE (nullE) 'x))
+            "not an object")
+
+  ;array
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
         (arrayV 'Posn (list (box (objV 'Posn (list (numV 2) (numV 7)))) (box (objV 'Posn (list (numV 2) (numV 7)))))))
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
@@ -300,7 +363,6 @@
         (interp-posn posn27))
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 0) posn27) (numE 0)))
             "array")
-
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 2) posn27) posn828))
         "not a number")
   (test/exn (interp-posn (arraysetE posn27 posn828 posn828))
@@ -309,17 +371,14 @@
             "not a number") 
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 2) posn27) (numE -1)))
         "negative")
-  ; Need here to show is imperative
-    
-  (test
-   (let ([my-new-array (newarrayE 'Posn (numE 2) posn27)])
-     (begin
-       (interp-posn (arraysetE my-new-array (numE 0) posn828))
-       (interp-posn (arrayrefE my-new-array (numE 1)))))
-   (interp-posn posn828))
-      
-      
-  
+  ;------
+;  (test
+;   (let ([my-new-array (newarrayE 'Posn (numE 2) posn27)])
+;     (begin
+;       (interp-posn (arraysetE my-new-array (numE 0) posn828))
+;       (interp-posn (arrayrefE my-new-array (numE 2)))))
+;   (interp-posn posn828))
+  ;------
   (test (interp-posn (arraysetE (newarrayE 'Posn (numE 2) posn27) (numE 0) posn828))
         (numV 0))
   (test/exn (interp-posn (arraysetE posn27 (numE 0) posn828))
@@ -333,33 +392,11 @@
                 empty (objV 'Object empty) (numV 0))
         (numV 10))
   
-  (test (interp (nullE) 
-                empty (objV 'Object empty) (numV 0))
-        (nullV))
-  (test/exn (interp-posn (getE (nullE) 'x))
-            "not an object")
 
-  (test (interp (if0E (numE 0) posn828 posn27)
-                (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
-        (interp-posn posn828))
-  (test (interp (if0E (numE 1) posn828 posn27)
-                (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
-        (interp-posn posn27))
-  (test/exn (interp (if0E posn828 posn828 posn27)
-                    (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
-            "not a number")
+
         
 
-  (test (interp-posn (castE 'Posn posn531))
-        (objV 'Posn3D (list (numV 5) (numV 3) (numV 1))))
-  (test (interp-posn (castE 'Posn posn27))
-        (objV 'Posn (list (numV 2) (numV 7))))
-  (test/exn (interp-posn (castE 'Posn3D posn27))
-              "not")
-  (test/exn (interp-posn (castE 'Number (numE 1)))
-            "not an object")
-  (test (interp-posn (castE 'Posn (nullE)))
-        (nullV))
+
   
   (test (interp (plusE (numE 10) (numE 17))
                 empty (objV 'Object empty) (numV 0))

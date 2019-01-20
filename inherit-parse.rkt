@@ -50,6 +50,10 @@
    [(s-exp-match? `{get ANY SYMBOL} s)
     (getI (parse (second (s-exp->list s)))
           (s-exp->symbol (third (s-exp->list s))))]
+   [(s-exp-match? `{set! ANY SYMBOL ANY} s)
+    (setE (parse (second (s-exp->list s)))
+          (s-exp->symbol (third (s-exp->list s)))
+          (parse (fourth (s-exp->list s))))]
    [(s-exp-match? `{cast SYMBOL ANY} s)
     (castI (s-exp->symbol (second (s-exp->list s)))
            (parse (third (s-exp->list s))))]
@@ -100,6 +104,8 @@
         (newI 'Posn (list (numI 1) (numI 2))))
   (test (parse `{get 1 x})
         (getI (numI 1) 'x))
+  (test (parse `{set! {+ 1 2} a 7})
+        (setE (plusE (numE 1) (numE 2)) 'a (numE 7)))
   (test (parse `{send 1 m 2})
         (sendI (numI 1) 'm (numI 2)))
   (test (parse `{super m 1})

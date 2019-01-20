@@ -88,33 +88,7 @@
                   (recur index-expr)
                   (recur set-expr))])))
 
-(module+ test
-  (test (exp-i->c (newarrayI 'Array (numI 0) (numI 1)) 'Object)
-        (newarrayE 'Array (numE 0) (numE 1)))
-  (test (exp-i->c (arrayrefI (numI 0) (numI 1)) 'Object)
-        (arrayrefE (numE 0) (numE 1)))
-  (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
-        (arraysetE (numE 0) (numE 1) (numE 2)))
-  (test (exp-i->c (numI 10) 'Object)
-        (numE 10))
-  (test (exp-i->c (if0I (numI 0) (numI 1) (numI 2)) 'Object)
-        (if0E (numE 0) (numE 1) (numE 2)))
-  (test (exp-i->c (plusI (numI 10) (numI 2)) 'Object)
-        (plusE (numE 10) (numE 2)))
-  (test (exp-i->c (multI (numI 10) (numI 2)) 'Object)
-        (multE (numE 10) (numE 2)))
-  (test (exp-i->c (argI) 'Object)
-        (argE))
-  (test (exp-i->c (thisI) 'Object)
-        (thisE))
-  (test (exp-i->c (newI 'Object (list (numI 1))) 'Object)
-        (newE 'Object (list (numE 1))))
-  (test (exp-i->c (getI (numI 1) 'x) 'Object)
-        (getE (numE 1) 'x))
-  (test (exp-i->c (sendI (numI 1) 'mdist (numI 2)) 'Object)
-        (sendE (numE 1) 'mdist (numE 2)))
-  (test (exp-i->c (superI 'mdist (numI 2)) 'Posn)
-        (ssendE (thisE) 'Posn 'mdist (numE 2))))
+
 
 ;; ----------------------------------------
 
@@ -250,12 +224,48 @@
          (cons (first methods) 
                (add/replace-method (rest methods)
                                    new-method)))]))
-
 (module+ test
-  (test (exp-i->c (nullI) 'Posn)
-        (nullE))
+  ;cast
   (test (exp-i->c (castI 'Object (numI 0)) 'Object)
         (castE 'Object (numE 0)))
+  ;if0
+  (test (exp-i->c (if0I (numI 0) (numI 1) (numI 2)) 'Object)
+        (if0E (numE 0) (numE 1) (numE 2)))
+  ;null
+  (test (exp-i->c (nullI) 'Posn)
+        (nullE))
+  ;array
+  (test (exp-i->c (newarrayI 'Array (numI 0) (numI 1)) 'Object)
+        (newarrayE 'Array (numE 0) (numE 1)))
+  (test (exp-i->c (arrayrefI (numI 0) (numI 1)) 'Object)
+        (arrayrefE (numE 0) (numE 1)))
+  (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
+        (arraysetE (numE 0) (numE 1) (numE 2)))
+  (test (exp-i->c (numI 10) 'Object)
+        (numE 10))
+  (test (exp-i->c (newarrayI 'Posn (numI 0) (numI 1)) 'Object)
+        (newarrayE 'Posn (numE 0) (numE 1)))
+  (test (exp-i->c (arrayrefI (numI 0) (numI 1)) 'Object)
+        (arrayrefE (numE 0) (numE 1)))
+  (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
+        (arraysetE (numE 0) (numE 1) (numE 2)))
+  ;rest
+  (test (exp-i->c (plusI (numI 10) (numI 2)) 'Object)
+        (plusE (numE 10) (numE 2)))
+  (test (exp-i->c (multI (numI 10) (numI 2)) 'Object)
+        (multE (numE 10) (numE 2)))
+  (test (exp-i->c (argI) 'Object)
+        (argE))
+  (test (exp-i->c (thisI) 'Object)
+        (thisE))
+  (test (exp-i->c (newI 'Object (list (numI 1))) 'Object)
+        (newE 'Object (list (numE 1))))
+  (test (exp-i->c (getI (numI 1) 'x) 'Object)
+        (getE (numE 1) 'x))
+  (test (exp-i->c (sendI (numI 1) 'mdist (numI 2)) 'Object)
+        (sendE (numE 1) 'mdist (numE 2)))
+  (test (exp-i->c (superI 'mdist (numI 2)) 'Posn)
+        (ssendE (thisE) 'Posn 'mdist (numE 2)))
   (test (add-fields (list 'x 'y) (list 'z))
         (list 'x 'y 'z))
 
@@ -287,12 +297,7 @@
         (list (values 'm (numE 0))
               (values 'n (numE 2))))
   
-  (test (exp-i->c (newarrayI 'Posn (numI 0) (numI 1)) 'Object)
-        (newarrayE 'Posn (numE 0) (numE 1)))
-  (test (exp-i->c (arrayrefI (numI 0) (numI 1)) 'Object)
-        (arrayrefE (numE 0) (numE 1)))
-  (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
-        (arraysetE (numE 0) (numE 1) (numE 2))))
+)
 
 ;; ----------------------------------------
 
