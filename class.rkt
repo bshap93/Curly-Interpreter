@@ -57,7 +57,8 @@
 (define-type Value
   (numV [n : Number])
   (objV [class-name : Symbol]
-        [field-values : (Listof Value)])
+        [field-names : (Listof Symbol)]
+        [field-values : (Listof (Boxof Value))])
   (nullV)
   (arrayV [type-name : Symbol]
           [value-list : (Listof (Boxof Value))]))
@@ -75,34 +76,48 @@
 
 ;; ----------------------------------------
 
-(define (find [l : (Listof (Symbol * 'a))] [name : Symbol]) : 'a
+(define (find [ns : (Listof Symbol)][vs : (Listof (Boxof 'a))] [name : Symbol]) : (Boxof 'a) 
+  (cond
+   [(empty? ns) (error 'interp "no such field")]
+   [else (if (symbol=? name (first ns))
+             (first vs)
+             (find (rest ns) (rest vs) name))]))
+
+
+(define (find2 [l : (Listof (Symbol * 'a))] [name : Symbol]) : 'a
   (type-case (Listof (Symbol * 'a)) l
     [empty
-     (error 'find (string-append "not found: " (symbol->string name)))]
+     (error 'find2 (error 'interp "no such field"))]
     [(cons p rst-l)
      (if (symbol=? (fst p) name)
          (snd p)
-         (find rst-l name))]))
+         (find2 rst-l name))]))
+    
+;(define (find2 [n : Symbol] [ns : (Listof Symbol)] [vs : (Listof (Boxof 'a))]) : (Boxof 'a)
+;  (cond
+;    [(empty? ns) (error 'interp "no such field")]
+;    [else (if (symbol=? n (first ns))
+;              (first vs)
+;              (find2 n (rest ns) (rest vs)))]))
 
 
 
 (module+ test
-  (test (find (list (values 'a 1)) 'a)
-        1)
-  (test (find (list (values 'a 1) (values 'b 2)) 'b)
-        2)
-  (test/exn (find empty 'a)
-            "not found: a")
-  (test/exn (find (list (values 'a 1)) 'x)
-            "not found: x"))
+  (test (find (cons 'a empty) (cons (box 1) empty) 'a)
+        (box 1))
+  (test (find (list 'a 'b) (list (box 1) (box 2)) 'b)
+        (box 2))
+  (test/exn (find empty empty 'a)
+            "interp: no such field")
+  (test/exn (find (cons 'a empty) (cons (box 1) empty) 'x)
+            "interp: no such field"))
 
 
 ;; ----------------------------------------
 
-(define interp : (Exp (Listof (Symbol * Class)) Value Value -> Value)
-  (lambda (a classes this-val arg-val)
-    (local [
-            (define (apply-array array-expr index-expr function)
+(define interp : (Exp (Listof (Symbol * Class)) Value (Boxof Value) -> Value)
+  (lambda (a classes this-val arg-val-box)
+    (local [(define (apply-array array-expr index-expr function)
               (type-case Value (recur index-expr)
                 [(numV num) (cond
                               [(< num 0) (error 'interp "index can't be negative")]
@@ -112,59 +127,55 @@
                                    [(arrayV type-name value-list) (function type-name value-list num)]
                                    [else (error 'interp "must be array")]))])]
                 [else (error 'interp "not a number")]))
-            
             (define (recur expr)
-              (interp expr classes this-val arg-val))]
+              (interp expr classes this-val arg-val-box))]
       
       (type-case Exp a
         [(numE n) (numV n)]
         [(plusE l r) (num+ (recur l) (recur r))]
         [(multE l r) (num* (recur l) (recur r))]
         [(thisE) this-val]
-        [(argE) arg-val]
+        [(argE) (unbox arg-val-box)]
         [(newE class-name field-exprs)
          (local [(define c (if (symbol=? class-name 'Object) 
                                (classC 'Object 'Object empty empty)
-                               (find classes class-name)))
+                               (find2 classes class-name)))
                  (define vals (map recur field-exprs))]
            (if (= (length vals) (length (classC-field-names c)))
-               (objV class-name vals)
+               (objV class-name (classC-field-names c) (map box vals))
                (error 'interp "wrong field count")))]
         [(getE obj-expr field-name)
          (type-case Value (recur obj-expr)
-           [(objV class-name field-vals)
-            (type-case Class (find classes class-name)
+           [(objV class-name field-names field-vals)
+            (type-case Class (find2 classes class-name)
               [(classC cls-name super field-names methods)
-               (find (map2 (lambda (n v) (values n v))
-                           field-names
-                           field-vals)
-                     field-name)])]
+               (unbox(find field-names field-vals field-name))])]
            [else (error 'interp "not an object")])]
         [(setE obj-expr field-name arg-expr)
          (type-case Value (recur obj-expr)
-           [(objV class-name field-values)
-            (let ([f (interp arg-expr env)])
+           [(objV class-name field-names field-values)
+            (let ([f (recur arg-expr)])
               (begin
-                (set-box! (find field-name class-name field-values) f)
+                (set-box! (find field-names field-values class-name) f)
                 f))]
            [else (error 'interp "not a record")])]
         [(sendE obj-expr method-name arg-expr)
          (local [(define obj (recur obj-expr))
                  (define arg-val (recur arg-expr))]
            (type-case Value obj
-             [(objV class-name field-vals)
+             [(objV class-name field-names field-vals)
               (call-method class-name method-name classes
-                           obj arg-val)]
+                           obj (box arg-val))]
              [else (error 'interp "not an object")]))]
         [(ssendE obj-expr class-name method-name arg-expr)
          (local [(define obj (recur obj-expr))
                  (define arg-val (recur arg-expr))]
            (call-method class-name method-name classes
-                        obj arg-val))]
+                        obj (box arg-val)))]
         [(castE class-name arg-expr)
          (let ([value (recur arg-expr)])
            (type-case Value value
-             [(objV class-name2 field-values)
+             [(objV class-name2 field-names field-values)
               (cond
                 [(instance-of? class-name2 class-name classes)
                  value]
@@ -193,14 +204,18 @@
          (apply-array array-expr index-expr
                       (lambda (type-name values index) (local [(define value (recur exp))]
                                                          (type-case Value value
-                                                           [(objV class-name field-values)
+                                                           [(objV class-name field-names field-values)
                                                             (cond
                                                               [(instance-of? class-name type-name classes)
                                                                (begin
                                                                  (set-array values index value)
                                                                  (numV 0))]
                                                               [else (error 'interp "array")])]
-                                                           [else (error 'interp "not an object")]))))]))))
+                                                           [else (error 'interp "not an object")]))))]
+        [(beginE l r)
+         (begin
+           (recur l)
+           (recur r))]))))
 
 (define (search-array values index function)
   (cond
@@ -227,19 +242,19 @@
   (cond
     [(equal? class-name parent-name) #t]
     [else
-     (type-case Class (find classes class-name)
+     (type-case Class (find2 classes class-name)
        [(classC cls-name super field-names methods)
         (instance-of? super parent-name classes)])]))
            
 (define (call-method class-name method-name classes
-                     obj arg-val)
-  (type-case Class (find classes class-name)
+                     obj arg-val-box)
+  (type-case Class (find2 classes class-name)
     [(classC cls-name super field-names methods)
-     (let ([body-expr (find methods method-name)])
+     (let ([body-expr (find2 methods method-name)])
        (interp body-expr
                classes
                obj
-               arg-val))]))
+               arg-val-box))]))
 
 (define (num-op [op : (Number Number -> Number)]
                 [op-name : Symbol] 
@@ -307,7 +322,7 @@
   (define posn42432 (newE 'Posn3D (list (numE 4) (numE 24) (numE 32))))
 
   (define (interp-posn a)
-    (interp a (list posn-class posn3D-class) (numV -1) (numV -1))))
+    (interp a (list posn-class posn3D-class) (numV -1) (box (numV -1)))))
 
   (define snowball-class
     (values 'Snowball
@@ -324,11 +339,11 @@
 
   ; cast
   (test (interp-posn (castE 'Posn posn531))
-        (objV 'Posn3D (list (numV 5) (numV 3) (numV 1))))
+        (objV 'Posn3D (list 'x 'y 'z) (list (box (numV 5)) (box (numV 3)) (box (numV 1)))))
   (test (interp-posn (castE 'Posn posn27))
-        (objV 'Posn (list (numV 2) (numV 7))))
+        (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7)))))
   (test/exn (interp-posn (castE 'Posn3D posn27))
-            "not")
+            "interp: no such field")
   (test/exn (interp-posn (castE 'Number (numE 1)))
             "not an object")
   (test (interp-posn (castE 'Posn (nullE)))
@@ -336,29 +351,29 @@
 
   ; if0
   (test (interp (if0E (numE 0) posn828 posn27)
-                (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+                (list posn-class posn3D-class) (objV 'Object empty empty) (box (numV 0)))
         (interp-posn posn828))
   (test (interp (if0E (numE 1) posn828 posn27)
-                (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+                (list posn-class posn3D-class) (objV 'Object empty empty) (box (numV 0)))
         (interp-posn posn27))
   (test/exn (interp (if0E posn828 posn828 posn27)
-                    (list posn-class posn3D-class) (objV 'Object empty) (numV 0))
+                    (list posn-class posn3D-class) (objV 'Object empty empty) (box (numV 0)))
             "not a number")
   (test/exn (interp-posn (newarrayE 'Posn posn27 (numE 9)))
             "not a number")
 
   ; null
   (test (interp (nullE) 
-                empty (objV 'Object empty) (numV 0))
+                empty (objV 'Object empty empty) (box (numV 0)))
         (nullV))
   (test/exn (interp-posn (getE (nullE) 'x))
             "not an object")
 
   ;array
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
-        (arrayV 'Posn (list (box (objV 'Posn (list (numV 2) (numV 7)))) (box (objV 'Posn (list (numV 2) (numV 7)))))))
+        (arrayV 'Posn (list (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))) (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))))))
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
-        (arrayV 'Posn (list (box (objV 'Posn (list (numV 2) (numV 7)))) (box (objV 'Posn (list (numV 2) (numV 7)))))))
+        (arrayV 'Posn (list (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))) (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))))))
   (test (interp-posn (arrayrefE (newarrayE 'Posn (numE 2) posn27) (numE 0)))
         (interp-posn posn27))
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 0) posn27) (numE 0)))
@@ -389,7 +404,7 @@
             "not an object")
   
   (test (interp (numE 10) 
-                empty (objV 'Object empty) (numV 0))
+                empty (objV 'Object empty empty) (box (numV 0)))
         (numV 10))
   
 
@@ -399,14 +414,14 @@
 
   
   (test (interp (plusE (numE 10) (numE 17))
-                empty (objV 'Object empty) (numV 0))
+                empty (objV 'Object empty empty) (box (numV 0)))
         (numV 27))
   (test (interp (multE (numE 10) (numE 7))
-                empty (objV 'Object empty) (numV 0))
+                empty (objV 'Object empty empty) (box (numV 0)))
         (numV 70))
 
   (test (interp-posn (newE 'Posn (list (numE 2) (numE 7))))
-        (objV 'Posn (list (numV 2) (numV 7))))
+        (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7)))))
 
   (test (interp-posn (sendE posn27 'mdist (numE 0)))
         (numV 9))
@@ -433,20 +448,20 @@
             "not an object")
   (test/exn (interp-posn (newE 'Posn (list (numE 0))))
             "wrong field count")
-    (test (interp (newarrayE 'num (numE 3) (numE 1)) empty (numV -1) (numV -1))
+    (test (interp (newarrayE 'num (numE 3) (numE 1)) empty (numV -1) (box (numV -1)))
         (arrayV 'num (list (box (numV 1)) (box (numV 1)) (box (numV 1)))))
-  (test/exn (interp (newarrayE 'num (numE -1) (numE 1)) empty (numV -1) (numV -1))
+  (test/exn (interp (newarrayE 'num (numE -1) (numE 1)) empty (numV -1) (box (numV -1)))
             "negative")
 
-  (test (interp (newarrayE 'NumType (numE 1) (numE 2)) empty (numV -1) (numV -1))
+  (test (interp (newarrayE 'NumType (numE 1) (numE 2)) empty (numV -1) (box (numV -1)))
         (arrayV 'NumType (list (box (numV 2)))))
 
   
-  (test (interp (arrayrefE (newarrayE 'num (numE 3) (numE 1)) (numE 1)) empty (numV -1) (numV -1))
+  (test (interp (arrayrefE (newarrayE 'num (numE 3) (numE 1)) (numE 1)) empty (numV -1) (box (numV -1)))
         (numV 1))
-  (test (interp (arrayrefE (newarrayE 'num (numE 3) (numE 1)) (numE 2)) empty (numV -1) (numV -1))
+  (test (interp (arrayrefE (newarrayE 'num (numE 3) (numE 1)) (numE 2)) empty (numV -1) (box (numV -1)))
         (numV 1))
-  (test/exn (interp (newarrayE 'num (numE -1) (numE 1)) empty (numV -1) (numV -1))
+  (test/exn (interp (newarrayE 'num (numE -1) (numE 1)) empty (numV -1) (box (numV -1)))
             "negative")
   
 
