@@ -170,14 +170,7 @@
                                 t-classes)]
            [else (type-error obj-expr "object")])]
         [(setI obj-expr field-name arg-expr)
-         (type-case Type (recur obj-expr)
-           [(objT class-name)
-            (cond
-              [(is-subtype? (recur arg-expr) (find-field-in-tree field-name class-name t-classes)
-                            t-classes)
-               (numT)]
-              [else  (type-error arg-expr "arg")])]
-           [else (type-error obj-expr "object")])]
+         ....]
         [(castI class-name exp)
          (let ([exp-type (recur exp)]
                [class-type (objT class-name)])
@@ -235,7 +228,7 @@
                           [(is-subtype? (recur arg-expr) t1 t-classes) (numT)]
                           [else (type-error arg-expr (to-string t1))])))]
         [(beginI l r)
-         (recur r)]))))    
+         ....]))))    
 
 
 (define (typecheck-send [class-name : Symbol]
@@ -366,12 +359,6 @@
         (objT 'Posn))
   (test/exn (typecheck-posn (if0I (numI 0) (numI 3) new-posn27))
             "numT")
-  (test (typecheck-posn (setI new-posn27 'x (numI 3)))
-            (numT))
-  (test (typecheck-posn (beginI
-                              (setI new-posn27 'x (numI 3))
-                              (newI 'Square (list (newI 'Posn3D (list (numI 0) (numI 1) (numI 3)))))))
-            (objT 'Square))
   
   (test (typecheck-posn (newI 'Square (list (newI 'Posn (list (numI 0) (numI 1))))))
         (objT 'Square))
@@ -416,7 +403,7 @@
                                                                     (numI 10))))))))
             "bad override")
   (test/exn (typecheck-method (methodT (numT) (objT 'Object) (numI 0)) (objT 'Object) empty)
-            "typecheck: no type")
+            "interp: no such field")
   (test/exn (typecheck (numI 0)
                        (list square-t-class
                              (values 'Cube
@@ -428,7 +415,7 @@
                                                       (methodT (numT) (numT)
                                                                ;; No such method in superclass:
                                                                (superI 'm (numI 0)))))))))
-            "interp: no such field"))
+            "not found"))
 
 ;; ----------------------------------------
 

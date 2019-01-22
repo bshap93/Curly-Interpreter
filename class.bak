@@ -364,7 +364,11 @@
             "not an object")
 
   ;array
-
+  (test/exn (interp-posn (setE (newE 'Posn (list (numE 1) (numE 2))) 'x (numE 5)))
+            "s")
+  (test/exn (interp-posn (newE 'Posn (list (numE 1) (numE 2))))
+            "s")
+  
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
         (arrayV 'Posn (list (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))) (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))))))
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
@@ -381,8 +385,14 @@
             "not a number") 
   (test/exn (interp-posn (arrayrefE (newarrayE 'Posn (numE 2) posn27) (numE -1)))
         "negative")
-
-
+  ;------
+;  (test
+;   (let ([my-new-array (newarrayE 'Posn (numE 2) posn27)])
+;     (begin
+;       (interp-posn (arraysetE my-new-array (numE 0) posn828))
+;       (interp-posn (arrayrefE my-new-array (numE 2)))))
+;   (interp-posn posn828))
+  ;------
   (test (interp-posn (arraysetE (newarrayE 'Posn (numE 2) posn27) (numE 0) posn828))
         (numV 0))
   (test/exn (interp-posn (arraysetE posn27 (numE 0) posn828))
@@ -391,16 +401,6 @@
             "can't be negative")
   (test/exn (interp-posn (arraysetE (newarrayE 'Posn (numE 2) posn27) (numE 0) (numE 0)))
             "not an object")
-
-
-  ; set
-  (test (interp-posn (setE (newE 'Posn (list (numE 1) (numE 2))) 'x (numE 5)))
-            (objV 'Posn '(x y) (list (box (numV 5)) (box (numV 2)))))
-
-;  (test (let ([aposn (newE 'Posn (list (numE 1) (numE 2)))])
-;          (interp-posn (beginE
-;                         (setE aposn 'x
-  
   
   (test (interp (numE 10) 
                 empty (objV 'Object empty empty) (box (numV 0)))
