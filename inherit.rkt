@@ -17,6 +17,9 @@
         [args : (Listof ExpI)])
   (getI [obj-expr : ExpI]
         [field-name : Symbol])
+  (setI [obj-expr : ExpI]
+        [field-name : Symbol]
+        [arg-expr : ExpI])
   (castI [class-name : Symbol]
          [exp : ExpI])
   (if0I [cnd : ExpI]
@@ -35,7 +38,9 @@
              (index-expr : ExpI))
   (arraysetI (array-expr : ExpI)
              (index-expr : ExpI)
-             (set-expr : ExpI)))
+             (set-expr : ExpI))
+  (beginI [l : ExpI]
+          [r : ExpI]))
 
 (define-type ClassI
   (classI [class-name : Symbol]
@@ -61,7 +66,8 @@
        (newE class-name (map recur field-exprs))]
       [(getI expr field-name)
        (getE (recur expr) field-name)]
-      ;; -----------------#2 Change---------------------
+      [(setI expr field-name arg)
+       (setE (recur expr) field-name (recur arg))]
       [(castI class-name exp)
        (castE class-name (recur exp))]
       [(if0I cnd thn els)
@@ -86,7 +92,9 @@
       [(arraysetI array-expr index-expr set-expr)
        (arraysetE (recur array-expr)
                   (recur index-expr)
-                  (recur set-expr))])))
+                  (recur set-expr))]
+      [(beginI l r)
+       (beginE (recur l) (recur r))])))
 
 
 
@@ -136,7 +144,7 @@
 (define (flatten-class [name : Symbol]
                        [classes-not-flat : (Listof (Symbol * Class))] 
                        [i-classes : (Listof (Symbol * ClassI))]) : Class
-  (type-case Class (find classes-not-flat name)
+  (type-case Class (find2 classes-not-flat name)
     [(classC cls-name1 super1 field-names methods)
      (type-case Class (flatten-super name classes-not-flat i-classes)
        [(classC cls-name2 super2 super-field-names super-methods)
@@ -149,7 +157,7 @@
 (define (flatten-super [name : Symbol]
                        [classes-not-flat : (Listof (Symbol * Class))] 
                        [i-classes : (Listof (Symbol * ClassI))]) : Class
-  (type-case ClassI (find i-classes name)
+  (type-case ClassI (find2 i-classes name)
     [(classI cls-name super-name field-names i-methods)
      (if (equal? super-name 'Object)
          (classC cls-name super-name empty empty)
@@ -234,6 +242,9 @@
   ;null
   (test (exp-i->c (nullI) 'Posn)
         (nullE))
+  ;set
+  (test (exp-i->c (setI (numI 1) 'x (numI 1)) 'Object)
+        (setE (numE 1) 'x (numE 1)))
   ;array
   (test (exp-i->c (newarrayI 'Array (numI 0) (numI 1)) 'Object)
         (newarrayE 'Array (numE 0) (numE 1)))
@@ -249,6 +260,8 @@
         (arrayrefE (numE 0) (numE 1)))
   (test (exp-i->c (arraysetI (numI 0) (numI 1) (numI 2)) 'Object)
         (arraysetE (numE 0) (numE 1) (numE 2)))
+  (test (exp-i->c (beginI (numI 0) (numI 1)) 'Object)
+        (beginE (numE 0) (numE 1)))
   ;rest
   (test (exp-i->c (plusI (numI 10) (numI 2)) 'Object)
         (plusE (numE 10) (numE 2)))
@@ -314,7 +327,7 @@
                      (values name
                              (flatten-class name classes-not-flat i-classes))))
                  classes-not-flat))]
-    (interp a classes (objV 'Object empty) (numV 0))))
+    (interp a classes (objV 'Object empty empty) (box (numV 0)))))
 
 (module+ test
   (test (interp-i (numI 0) empty)

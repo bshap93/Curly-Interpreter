@@ -54,12 +54,14 @@
     [else (error 'parse-type "invalid input")]))
 
 (module+ test
-  ;cast
   (test (parse-type `num)
         (numT))
+  
+  (test (parse-type `{array num})
+        (arrayT (objT 'num)))
   (test (parse-type `Object)
         (objT 'Object))
-  (test/exn (parse-type `{})
+  (test/exn (parse-type `{array {new Object}})
             "invalid input")
   
   (test (parse-t-field `[x : num])
@@ -93,12 +95,15 @@
                      (map parse-t-class classes))])
     (type-case Value v
       [(numV n) (number->s-exp n)]
-      [(objV class-name field-vals) `object]
+      [(objV class-name field-names field-vals) `object]
       [(arrayV type-name values) `array]
       [(nullV) `null])))
 
 
-
+(define posn-t-class
+  `{class posn extends object
+     {[x : num]
+      [y : num]}})
 
 (module+ test
   (test (interp-t-prog

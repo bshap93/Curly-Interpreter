@@ -93,12 +93,6 @@
          (snd p)
          (find2 rst-l name))]))
     
-;(define (find2 [n : Symbol] [ns : (Listof Symbol)] [vs : (Listof (Boxof 'a))]) : (Boxof 'a)
-;  (cond
-;    [(empty? ns) (error 'interp "no such field")]
-;    [else (if (symbol=? n (first ns))
-;              (first vs)
-;              (find2 n (rest ns) (rest vs)))]))
 
 
 
@@ -370,6 +364,11 @@
             "not an object")
 
   ;array
+  (test/exn (interp-posn (setE (newE 'Posn (list (numE 1) (numE 2))) 'x (numE 5)))
+            "s")
+  (test/exn (interp-posn (newE 'Posn (list (numE 1) (numE 2))))
+            "s")
+  
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))
         (arrayV 'Posn (list (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))) (box (objV 'Posn (list 'x 'y) (list (box (numV 2)) (box (numV 7))))))))
   (test (interp-posn (newarrayE 'Posn (numE 2) posn27))

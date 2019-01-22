@@ -33,7 +33,7 @@
 (define (get-all-field-types class-name t-classes)
   (if (equal? class-name 'Object)
       empty        
-      (type-case ClassT (find t-classes class-name)
+      (type-case ClassT (find2 t-classes class-name)
         [(classT cls-name super-name fields methods)
          (append 
           (get-all-field-types super-name t-classes)
@@ -43,13 +43,13 @@
 
 (define (make-find-in-tree class-items)
   (lambda (name class-name t-classes)
-    (local [(define t-class (find t-classes class-name))
+    (local [(define t-class (find2 t-classes class-name))
             (define items (class-items t-class))
             (define super-name 
               (classT-super-name t-class))]
       (if (equal? super-name 'Object)
-          (find items name)
-          (try (find items name)
+          (find2 items name)
+          (try (find2 items name)
                (lambda ()
                  ((make-find-in-tree class-items)
                   name 
@@ -71,7 +71,7 @@
     [(equal? name1 name2) #t]
     [(equal? name1 'Object) #f]
     [else
-     (type-case ClassT (find t-classes name1)
+     (type-case ClassT (find2 t-classes name1)
        [(classT class-name super-name fields methods)
         (is-subclass? super-name name2 t-classes)])]))
 
@@ -126,10 +126,10 @@
 
 ;; ----------------------------------------
 
-(define typecheck-expr : (ExpI (Listof (Symbol * ClassT)) Type Type -> Type)
-  (lambda (expr t-classes this-type arg-type)
+(define typecheck-expr : (ExpI (Listof (Symbol * ClassT)) Type (Boxof Type) -> Type)
+  (lambda (expr t-classes this-type arg-type-box)
     (local [(define (recur expr)
-              (typecheck-expr expr t-classes this-type arg-type))
+              (typecheck-expr expr t-classes this-type arg-type-box))
             (define (typecheck-nums l r)
               (type-case Type (recur l)
                 [(numT)
@@ -147,7 +147,7 @@
         [(numI n) (numT)]
         [(plusI l r) (typecheck-nums l r)]
         [(multI l r) (typecheck-nums l r)]
-        [(argI) arg-type]
+        [(argI) (unbox arg-type-box)]
         [(thisI) this-type]
         [(newI class-name exprs)
          (local [(define arg-types (map recur exprs))
@@ -169,7 +169,8 @@
                                 class-name
                                 t-classes)]
            [else (type-error obj-expr "object")])]
-        ;; -----------------#2 Change---------------------
+        [(setI obj-expr field-name arg-expr)
+         ....]
         [(castI class-name exp)
          (let ([exp-type (recur exp)]
                [class-type (objT class-name)])
@@ -204,7 +205,7 @@
         [(superI method-name arg-expr)
          (local [(define arg-type (recur arg-expr))
                  (define this-class
-                   (find t-classes (objT-class-name this-type)))]
+                   (find2 t-classes (objT-class-name this-type)))]
            (typecheck-send (classT-super-name this-class)
                            method-name
                            arg-expr arg-type
@@ -225,7 +226,9 @@
                       (lambda (t1)
                         (cond
                           [(is-subtype? (recur arg-expr) t1 t-classes) (numT)]
-                          [else (type-error arg-expr (to-string t1))])))]))))    
+                          [else (type-error arg-expr (to-string t1))])))]
+        [(beginI l r)
+         ....]))))    
 
 
 (define (typecheck-send [class-name : Symbol]
@@ -248,7 +251,7 @@
   (type-case MethodT method
     [(methodT arg-type result-type body-expr)
      (if (is-subtype? (typecheck-expr body-expr t-classes
-                                      this-type arg-type)
+                                      this-type (box arg-type))
                       result-type
                       t-classes)
          (values)
@@ -294,7 +297,7 @@
     (map (lambda (tc)
            (typecheck-class (fst tc) (snd tc) t-classes))
          t-classes)
-    (typecheck-expr a t-classes (objT 'Object) (numT))))
+    (typecheck-expr a t-classes (objT 'Object) (box (numT)))))
 
 ;; ----------------------------------------
 
@@ -400,7 +403,7 @@
                                                                     (numI 10))))))))
             "bad override")
   (test/exn (typecheck-method (methodT (numT) (objT 'Object) (numI 0)) (objT 'Object) empty)
-            "no type")
+            "interp: no such field")
   (test/exn (typecheck (numI 0)
                        (list square-t-class
                              (values 'Cube

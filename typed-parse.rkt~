@@ -14,7 +14,8 @@
     [(s-exp-match? `{class SYMBOL extends SYMBOL {ANY ...} ANY ...} s)
      (values
       (s-exp->symbol (second (s-exp->list s)))
-      (classT (s-exp->symbol (fourth (s-exp->list s)))
+      (classT (s-exp->symbol (second (s-exp->list s)))
+              (s-exp->symbol (fourth (s-exp->list s)))
               (map parse-t-field
                    (s-exp->list (fourth (rest (s-exp->list s)))))
               (map parse-t-method 
@@ -53,6 +54,7 @@
     [else (error 'parse-type "invalid input")]))
 
 (module+ test
+  ;cast
   (test (parse-type `num)
         (numT))
   (test (parse-type `Object)
@@ -75,7 +77,8 @@
                           [m1 {[arg : num]} : num arg]
                           [m2 ([arg : num]) : Object this]})
         (values 'Posn3D
-                (classT 'Posn
+                (classT 'Posn3D
+                        'Posn
                         (list (values 'x (numT))
                               (values 'y (numT)))
                         (list (values 'm1 (methodT (numT) (numT) (argI)))
@@ -90,18 +93,38 @@
                      (map parse-t-class classes))])
     (type-case Value v
       [(numV n) (number->s-exp n)]
-      [(objV class-name field-vals) `object]
+      [(objV class-name field-names field-vals) `object]
       [(arrayV type-name values) `array]
       [(nullV) `null])))
 
+
+(define posn-t-class
+  `{class posn extends object
+     {[x : num]
+      [y : num]}})
+
 (module+ test
+
+  (test (interp-t-prog
+         (list posn-t-class)
+         `{newarray Posn 5 {set! {new Posn 1 1} x 5}})
+        `array)
+  
   (test (interp-t-prog
          (list
           `{class Empty extends Object
              {}})
          `null)
         `null)
+  
+  (test (interp-t-prog empty `null)
+        `null)
 
+  (test (interp-t-prog
+         empty
+         `{newarray Object 5 {new Object}})
+        `array)
+  
   (test (interp-t-prog
          (list
           `{class Empty extends Object
