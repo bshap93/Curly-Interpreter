@@ -1,1 +1,1 @@
-Plait Interpreter for experimental langugage with type system.
+Curly Interpreter for experimental langugage with type system. This is an interpreter for a language called Curly, featuring a type system, objects, field assignment, Java-style objects, continuation, compilation, and interfaces. The design went through many different programming paradigms, learning about all the major styles such as object oriented, functional, imperative, lazy and eager evaluation. The language aids the creation of programs that are easy to understand.
